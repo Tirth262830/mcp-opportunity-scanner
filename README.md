@@ -1,4 +1,4 @@
-# MCP Opportunity Scanner
+# WebMcp.AI
 
 Paste a public website URL and discover the WebMCP tools that could make it useful to AI agents. The scanner researches the target site and relevant web context, maps real workflows to structured tools, ranks each opportunity, and generates a production-oriented implementation prompt.
 

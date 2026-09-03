@@ -10,7 +10,7 @@ async function fetchPage(input: URL, signal: AbortSignal): Promise<PageEvidence>
     const response = await fetch(current, {
       signal,
       redirect: "manual",
-      headers: { "User-Agent": "MCP-Opportunity-Scanner/1.0 (+local research tool)", Accept: "text/html" },
+      headers: { "User-Agent": "WebMcp.AI/1.0 (+local research tool)", Accept: "text/html" },
     });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
