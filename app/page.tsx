@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   ArrowRight,
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { AnalysisReport, Opportunity } from '@/lib/schemas';
 import { buildImplementationPrompt } from '@/lib/prompt';
+import { analyzeWebsiteToolDefinition } from '@/lib/webmcp';
 
 const steps = [
   'Fetching public pages',
@@ -245,6 +246,7 @@ export default function Home() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [dark, setDark] = useState(true);
   const [copied, setCopied] = useState(false);
+  const reportRef = useRef<AnalysisReport | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
@@ -258,51 +260,50 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [loading]);
 
-  const analyze = useCallback(
-    async (candidate = url) => {
-      setError('');
-      setLoading(true);
-      setProgress(0);
-      setReport(null);
-      setIsDemo(false);
-      try {
-        const response = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ websiteUrl: candidate }),
-        });
-        const contentType = response.headers.get('content-type') ?? '';
-        const data = contentType.includes('application/json')
-          ? await response.json()
-          : {
-              error:
-                response.status === 504
-                  ? 'The analysis took too long. Please try again or use a website with fewer public pages.'
-                  : (await response.text()).trim() || 'Analysis failed.',
-            };
-        if (!response.ok) throw new Error(data.error || 'Analysis failed.');
-        setProgress(steps.length);
-        setReport(data);
-        setSelected(data.top_recommendations);
-        setTimeout(
-          () =>
-            document
-              .getElementById('report')
-              ?.scrollIntoView({ behavior: 'smooth' }),
-          100,
-        );
-        return data as AnalysisReport;
-      } catch (caught) {
-        const message =
-          caught instanceof Error ? caught.message : 'Analysis failed.';
-        setError(message);
-        throw caught;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [url],
-  );
+  const analyze = useCallback(async (candidate: string) => {
+    setError('');
+    setLoading(true);
+    setProgress(0);
+    setReport(null);
+    reportRef.current = null;
+    setIsDemo(false);
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ websiteUrl: candidate }),
+      });
+      const contentType = response.headers.get('content-type') ?? '';
+      const data = contentType.includes('application/json')
+        ? await response.json()
+        : {
+            error:
+              response.status === 504
+                ? 'The analysis took too long. Please try again or use a website with fewer public pages.'
+                : (await response.text()).trim() || 'Analysis failed.',
+          };
+      if (!response.ok) throw new Error(data.error || 'Analysis failed.');
+      setProgress(steps.length);
+      reportRef.current = data as AnalysisReport;
+      setReport(data);
+      setSelected(data.top_recommendations);
+      setTimeout(
+        () =>
+          document
+            .getElementById('report')
+            ?.scrollIntoView({ behavior: 'smooth' }),
+        100,
+      );
+      return data as AnalysisReport;
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'Analysis failed.';
+      setError(message);
+      throw caught;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const context = document.modelContext;
@@ -310,22 +311,7 @@ export default function Home() {
     const lifecycle = new AbortController();
     const tools = [
       {
-        name: 'analyze_website',
-        title: 'Analyze website',
-        description:
-          'Research a public website and generate its MCP opportunity report.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            websiteUrl: {
-              type: 'string',
-              description: 'Public HTTP or HTTPS website URL',
-            },
-          },
-          required: ['websiteUrl'],
-          additionalProperties: false,
-        },
-        annotations: { readOnlyHint: false, untrustedContentHint: true },
+        ...analyzeWebsiteToolDefinition,
         execute: async (input: unknown) => {
           const value = input as { websiteUrl?: string };
           if (!value.websiteUrl) throw new Error('websiteUrl is required');
@@ -350,11 +336,12 @@ export default function Home() {
         },
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute: () => {
-          if (!report)
+          const currentReport = reportRef.current;
+          if (!currentReport)
             throw new Error(
               'No report is available. Run analyze_website first.',
             );
-          return report;
+          return currentReport;
         },
       },
       {
@@ -376,9 +363,10 @@ export default function Home() {
         },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
         execute: (input: unknown) => {
-          if (!report) throw new Error('No report is available.');
+          const currentReport = reportRef.current;
+          if (!currentReport) throw new Error('No report is available.');
           const names = (input as { toolNames?: string[] }).toolNames ?? [];
-          const chosen = report.opportunities.filter((o) =>
+          const chosen = currentReport.opportunities.filter((o) =>
             names.includes(o.tool.name),
           );
           if (!chosen.length)
@@ -386,7 +374,10 @@ export default function Home() {
           setSelected(chosen.map((o) => o.tool.name));
           return {
             selected: chosen.map((o) => o.tool.name),
-            implementation_prompt: buildImplementationPrompt(report, chosen),
+            implementation_prompt: buildImplementationPrompt(
+              currentReport,
+              chosen,
+            ),
           };
         },
       },
@@ -399,7 +390,7 @@ export default function Home() {
       } catch {}
     });
     return () => lifecycle.abort();
-  }, [analyze, report]);
+  }, [analyze]);
 
   const filtered = useMemo(() => {
     if (!report) return [];
@@ -425,6 +416,7 @@ export default function Home() {
       ? buildImplementationPrompt(report, selectedTools)
       : (report?.implementation_prompt ?? '');
   function showDemo() {
+    reportRef.current = demo;
     setReport(demo);
     setIsDemo(true);
     setSelected(demo.top_recommendations);
@@ -482,7 +474,7 @@ export default function Home() {
           className="scanner"
           onSubmit={(event) => {
             event.preventDefault();
-            void analyze().catch(() => undefined);
+            void analyze(url).catch(() => undefined);
           }}
         >
           <div className="scanner-input">
