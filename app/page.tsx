@@ -271,7 +271,15 @@ export default function Home() {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ websiteUrl: candidate }),
         });
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') ?? '';
+        const data = contentType.includes('application/json')
+          ? await response.json()
+          : {
+              error:
+                response.status === 504
+                  ? 'The analysis took too long. Please try again or use a website with fewer public pages.'
+                  : (await response.text()).trim() || 'Analysis failed.',
+            };
         if (!response.ok) throw new Error(data.error || 'Analysis failed.');
         setProgress(steps.length);
         setReport(data);
