@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import {
   ArrowRight,
   Bot,
@@ -432,12 +433,16 @@ export default function Home() {
   return (
     <main>
       <nav className="nav shell">
-        <a className="brand" href="#top">
-          <span className="brand-mark">
-            <Network size={18} />
-          </span>
-          <span>
-            MCP<span className="muted">/scanner</span>
+        <a className="brand" href="#top" aria-label="WebMcp.AI home">
+          <Image
+            className="brand-logo"
+            src="/webmcp-ai-mark.png"
+            alt=""
+            width="44"
+            height="43"
+          />
+          <span className="brand-name">
+            WebMcp<span>.AI</span>
           </span>
         </a>
         <div className="nav-actions">
@@ -450,14 +455,6 @@ export default function Home() {
           >
             {dark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <a
-            className="challenge-pill"
-            href="https://openai.com/webmcp-challenge/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            WebMCP Challenge <ExternalLink size={13} />
-          </a>
         </div>
       </nav>
       <section id="top" className="hero shell">
@@ -1023,10 +1020,16 @@ export default function Home() {
       )}
       <footer className="shell">
         <div className="brand">
-          <span className="brand-mark">
-            <Network size={17} />
+          <Image
+            className="brand-logo"
+            src="/webmcp-ai-mark.png"
+            alt=""
+            width="44"
+            height="43"
+          />
+          <span className="brand-name">
+            WebMcp<span>.AI</span>
           </span>
-          MCP/scanner
         </div>
         <p>
           Built for the OpenAI WebMCP Challenge · Humans click. Agents call

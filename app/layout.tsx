@@ -13,8 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'MCP Opportunity Scanner',
+  title: 'WebMcp.AI',
   description: 'Paste a URL and discover the WebMCP tools that make it agent-ready.',
+  icons: {
+    icon: '/webmcp-ai-mark.png',
+  },
 };
 
 export default function RootLayout({
