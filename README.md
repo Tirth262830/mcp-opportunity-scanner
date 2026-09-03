@@ -42,6 +42,8 @@ OPENCODE_API_KEY=
 OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
 OPENCODE_MODEL=gpt-5.6-luna
 ANALYSIS_TIMEOUT_MS=45000
+ENRICHED_ANALYSIS_TIMEOUT_MS=90000
+FALLBACK_ANALYSIS_TIMEOUT_MS=150000
 ```
 
 Add your OpenCode Go key only to `.env.local`. For backward compatibility, the server also accepts it from `OPENAI_API_KEY`. The API route and model client are server-side; the browser never receives the key. Do not prefix the key with `NEXT_PUBLIC_`.

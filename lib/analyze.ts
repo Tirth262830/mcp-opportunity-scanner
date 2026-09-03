@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { APIConnectionTimeoutError } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { AnalysisReportSchema, type AnalysisReport } from "./schemas";
 import { calculateOpportunityScore, difficultyLabel } from "./scoring";
@@ -13,6 +13,11 @@ Use web search to research the submitted business, relevant competitors, public 
 
 Scores must be evidence-based. implementation_difficulty is 0 for easiest and 100 for hardest; safety is 100 for lowest risk. Return 5-10 distinct opportunities. implementation_prompt may be a brief placeholder because the application will deterministically replace it with a complete prompt.`;
 
+function isTimeoutError(error: unknown) {
+  return error instanceof APIConnectionTimeoutError
+    || (error instanceof Error && /timed?\s*out|timeout/i.test(error.message));
+}
+
 export async function analyzeWebsite(websiteUrl: string): Promise<AnalysisReport> {
   const apiKey = process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENCODE_API_KEY is not configured. Add it to .env.local and restart the server.");
@@ -21,13 +26,36 @@ export async function analyzeWebsite(websiteUrl: string): Promise<AnalysisReport
     apiKey,
     baseURL: process.env.OPENCODE_BASE_URL || "https://opencode.ai/zen/go/v1",
   });
-  const response = await client.responses.parse({
-    model: process.env.OPENCODE_MODEL || "gpt-5.6-luna",
-    tools: [{ type: "web_search_preview", search_context_size: "medium" }],
-    text: { format: zodTextFormat(AnalysisReportSchema, "mcp_opportunity_report") },
-    instructions,
-    input: `Analyze this website: ${research.canonicalUrl}\n\nDIRECTLY FETCHED EVIDENCE:\n${formatResearchForModel(research)}\n\nResearch partial: ${research.partial}. If access is incomplete, state it in limitations.`,
-  });
+  const model = process.env.OPENCODE_MODEL || "gpt-5.6-luna";
+  const input = `Analyze this website: ${research.canonicalUrl}\n\nDIRECTLY FETCHED EVIDENCE:\n${formatResearchForModel(research)}\n\nResearch partial: ${research.partial}. If access is incomplete, state it in limitations.`;
+  const primaryTimeout = Number(process.env.ENRICHED_ANALYSIS_TIMEOUT_MS ?? 90_000);
+  const fallbackTimeout = Number(process.env.FALLBACK_ANALYSIS_TIMEOUT_MS ?? 150_000);
+  let response;
+
+  try {
+    response = await client.responses.parse({
+      model,
+      tools: [{ type: "web_search_preview", search_context_size: "low" }],
+      text: { format: zodTextFormat(AnalysisReportSchema, "mcp_opportunity_report") },
+      instructions,
+      input,
+    }, { timeout: primaryTimeout, maxRetries: 0 });
+  } catch (error) {
+    if (!isTimeoutError(error)) throw error;
+    try {
+      response = await client.responses.parse({
+        model,
+        text: { format: zodTextFormat(AnalysisReportSchema, "mcp_opportunity_report") },
+        instructions: `${instructions}\n\nWeb search is unavailable for this attempt. Use only the directly fetched evidence, cite only URLs present in it, and clearly state this limitation.`,
+        input,
+      }, { timeout: fallbackTimeout, maxRetries: 0 });
+    } catch (fallbackError) {
+      if (isTimeoutError(fallbackError)) {
+        throw new Error("The AI analysis service is taking longer than expected. Please try again.");
+      }
+      throw fallbackError;
+    }
+  }
   if (!response.output_parsed) throw new Error("The model did not return a valid structured report.");
   const report = response.output_parsed;
   report.website.url = research.canonicalUrl;
